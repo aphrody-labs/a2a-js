@@ -59,6 +59,9 @@
       ],
       "compat/v0_3/client/grpc": [
         "./dist/compat/v0_3/client/transports/grpc/index.d.ts"
+      ],
+      "server/fetch": [
+        "./dist/server/fetch/index.d.ts"
       ]
     }
   },
@@ -87,6 +90,11 @@
       "types": "./dist/server/express/index.d.ts",
       "import": "./dist/server/express/index.js",
       "require": "./dist/server/express/index.cjs"
+    },
+    "./server/fetch": {
+      "types": "./dist/server/fetch/index.d.ts",
+      "import": "./dist/server/fetch/index.js",
+      "require": "./dist/server/fetch/index.cjs"
     },
     "./server/grpc": {
       "types": "./dist/server/grpc/index.d.ts",
@@ -161,6 +169,7 @@
     "@types/supertest": "^6.0.3",
     "@vitest/coverage-v8": "^4.1.11",
     "better-sqlite3": "^13.0.3",
+    "bun-types": "1.4.5",
     "esbuild": "^0.28.1",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
@@ -194,7 +203,8 @@
     "generate": "(cd src/types && npx buf generate) && (cd src/grpc && npx buf generate) && node scripts/postprocess_generated_types.js",
     "generate:compat": "curl -fSL https://raw.githubusercontent.com/a2aproject/A2A/v0.3.0/specification/json/a2a.json > compat_spec.json && node scripts/generateCompatTypes.js && rm compat_spec.json",
     "test-build": "node scripts/test_build.mjs",
-    "itk-agent": "tsx itk/itk_agent.ts"
+    "itk-agent": "tsx itk/itk_agent.ts",
+    "test:bun": "bun test test/bun"
   },
   "dependencies": {
     "jose": "^6.2.3"

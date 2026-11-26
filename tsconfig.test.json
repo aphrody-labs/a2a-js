@@ -1,4 +1,6 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": ["test/**/*.ts"]
+  "include": ["test/**/*.ts"],
+  // test/bun runs under `bun test` and type-checks with Bun's types (test/bun/tsconfig.json).
+  "exclude": ["test/bun/**"]
 }

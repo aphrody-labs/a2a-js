@@ -8,6 +8,7 @@ export default defineConfig([
       'src/errors/grpc/index.ts',
       'src/server/index.ts',
       'src/server/express/index.ts',
+      'src/server/fetch/index.ts',
       'src/server/grpc/index.ts',
       'src/server/database/index.ts',
       'src/client/index.ts',
