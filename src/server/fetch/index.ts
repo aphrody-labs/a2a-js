@@ -69,6 +69,16 @@ async function etagOf(text: string): Promise<string> {
   return `W/"${hex}"`;
 }
 
+/** RFC 9110 If-None-Match: `*` or a comma-separated list of (weak or strong) ETags, compared weakly. */
+function etagMatches(header: string | null, etag: string): boolean {
+  if (!header) return false;
+  const bare = (t: string) => t.trim().replace(/^W\//, '');
+  return header.split(',').some((t) => t.trim() === '*' || bare(t) === bare(etag));
+}
+
+/** How long jsonRpc reuses the agent card it validates the protocol version against, ms. */
+const CARD_TTL_MS = 5000;
+
 export function a2aFetchHandlers(options: FetchHandlerOptions): FetchHandlers {
   const transport = new JsonRpcTransportHandler(options.requestHandler);
   const userBuilder: FetchUserBuilder =
@@ -80,7 +90,7 @@ export function a2aFetchHandlers(options: FetchHandlerOptions): FetchHandlers {
       const body = JSON.stringify(await options.requestHandler.getAgentCard());
       const etag = await etagOf(body);
       const headers = { 'Cache-Control': `public, max-age=${maxAge}`, ETag: etag };
-      if (req.headers.get('if-none-match') === etag) {
+      if (etagMatches(req.headers.get('if-none-match'), etag)) {
         return new Response(null, { status: 304, headers });
       }
       return new Response(body, {
@@ -90,6 +100,18 @@ export function a2aFetchHandlers(options: FetchHandlerOptions): FetchHandlers {
       console.error('Error fetching agent card:', error);
       return json({ error: 'Failed to retrieve agent card' }, 500);
     }
+  };
+
+  let cardCache:
+    | { at: number; card: Promise<Awaited<ReturnType<A2ARequestHandler['getAgentCard']>>> }
+    | undefined;
+  const cachedCard = () => {
+    if (!cardCache || Date.now() - cardCache.at > CARD_TTL_MS) {
+      const card = options.requestHandler.getAgentCard();
+      card.catch(() => (cardCache = undefined));
+      cardCache = { at: Date.now(), card };
+    }
+    return cardCache.card;
   };
 
   const jsonRpc = async (req: Request): Promise<Response> => {
@@ -120,6 +142,19 @@ export function a2aFetchHandlers(options: FetchHandlerOptions): FetchHandlers {
       });
     }
 
+    // Batches (arrays) and non-object bodies are not A2A requests; reject them before any other work.
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      body = undefined;
+      return json({
+        jsonrpc: '2.0',
+        id: null,
+        error: {
+          code: A2A_ERROR_CODE.INVALID_REQUEST,
+          message: 'Request must be a single JSON-RPC object; batches are not supported.',
+        },
+      });
+    }
+
     try {
       const user = await userBuilder(req);
       const context = (options.contextBuilder ?? defaultServerCallContextBuilder)({
@@ -132,12 +167,8 @@ export function a2aFetchHandlers(options: FetchHandlerOptions): FetchHandlers {
         protocolBinding: 'JSONRPC',
       });
       context.setProtocolBindingIfAbsent('JSONRPC');
-      validateVersion(
-        context.requestedVersion,
-        await options.requestHandler.getAgentCard(),
-        'JSONRPC'
-      );
-      const result = await transport.handle(body ?? {}, context);
+      validateVersion(context.requestedVersion, await cachedCard(), 'JSONRPC');
+      const result = await transport.handle(body, context);
       const extHeaders = (): Record<string, string> =>
         context.activatedExtensions
           ? { [HTTP_EXTENSION_HEADER]: Array.from(context.activatedExtensions).join(', ') }

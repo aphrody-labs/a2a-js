@@ -57,6 +57,16 @@ describe('a2aFetchHandlers on Bun.serve', () => {
       headers: { 'if-none-match': etag },
     });
     expect(again.status).toBe(304);
+    for (const inm of [`W/"0000", ${etag}`, '*', etag.replace(/^W\//, '')]) {
+      const r = await fetch(new URL('/.well-known/agent-card.json', server.url), {
+        headers: { 'if-none-match': inm },
+      });
+      expect(r.status).toBe(304);
+    }
+    const miss = await fetch(new URL('/.well-known/agent-card.json', server.url), {
+      headers: { 'if-none-match': 'W/"0000"' },
+    });
+    expect(miss.status).toBe(200);
   });
 
   it('answers a unary call as JSON', async () => {
@@ -90,6 +100,21 @@ describe('a2aFetchHandlers on Bun.serve', () => {
     };
     expect(ct.error.code).toBe(A2A_ERROR_CODE.CONTENT_TYPE_NOT_SUPPORTED);
     const ver = await rpc({ jsonrpc: '2.0', id: 3, method: 'GetTask' }, { 'a2a-version': '9.9' });
-    expect(((await ver.json()) as { id: number }).id).toBe(3);
+    const verBody = (await ver.json()) as {
+      id: number;
+      result?: unknown;
+      error?: { code: number };
+    };
+    expect(verBody.id).toBe(3);
+    expect(verBody.result).toBeUndefined();
+    expect(verBody.error?.code).toBe(A2A_ERROR_CODE.VERSION_NOT_SUPPORTED);
+    for (const bad of [[{ jsonrpc: '2.0', id: 4, method: 'GetTask' }], 42, null]) {
+      const r = (await (await rpc(JSON.stringify(bad))).json()) as {
+        id: unknown;
+        error?: { code: number };
+      };
+      expect(r.id).toBeNull();
+      expect(r.error?.code).toBe(A2A_ERROR_CODE.INVALID_REQUEST);
+    }
   });
 });
